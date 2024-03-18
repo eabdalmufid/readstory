@@ -1,0 +1,21 @@
+{
+  "name": "readstory",
+  "version": "1.0.0",
+  "description": "Script auto readstory whatsapp menggunakan library baileys",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "readstory",
+    "baileys"
+  ],
+  "author": "Afidev",
+  "license": "MIT",
+  "dependencies": {
+    "@whiskeysockets/baileys": "latest",
+    "dotenv": "^16.3.1",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
