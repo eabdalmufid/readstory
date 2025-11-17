@@ -1,6 +1,6 @@
 import "dotenv/config"
 
-import makeWASocket, { delay, useMultiFileAuthState, fetchLatestWaWebVersion, makeInMemoryStore, jidNormalizedUser, PHONENUMBER_MCC, DisconnectReason, Browsers } from "@whiskeysockets/baileys"
+import makeWASocket, { delay, useMultiFileAuthState, fetchLatestWaWebVersion, jidNormalizedUser, DisconnectReason, Browsers } from "@whiskeysockets/baileys"
 import pino from "pino"
 import { Boom } from "@hapi/boom"
 import fs from "fs"
@@ -8,10 +8,7 @@ import fs from "fs"
 const logger = pino({ timestamp: () => `,"time":"${new Date().toJSON()}"` }).child({ class: "sock" })
 logger.level = "fatal"
 
-const useStore = process.argv.includes('--store')
 const usePairingCode = process.env.PAIRING_NUMBER
-
-const store = useStore ? makeInMemoryStore({ logger }) : undefined
 
 const startSock = async () => {
    const { state, saveCreds } = await useMultiFileAuthState("./sessions")
@@ -19,7 +16,7 @@ const startSock = async () => {
 
    console.log(`using WA v${version.join('.')}, isLatest: ${isLatest}`)
 
-   const sock = makeWASocket.default({
+   const sock = makeWASocket({
       version,
       logger,
       printQRInTerminal: !usePairingCode,
@@ -29,13 +26,11 @@ const startSock = async () => {
       getMessage
    })
 
-   if (useStore) store.bind(sock.ev)
-
    // login dengan pairing
    if (usePairingCode && !sock.authState.creds.registered) {
       let phoneNumber = usePairingCode.replace(/[^0-9]/g, '')
-
-      if (!Object.keys(PHONENUMBER_MCC).some(v => phoneNumber.startsWith(v))) throw "Start with your country's WhatsApp code, Example : 62xxx"
+      const PHONE_CC = await (await fetch('https://raw.githubusercontent.com/eabdalmufid/Databasee/refs/heads/main/data/countryphonecode.json')).json()
+      if (!Object.keys(PHONE_CC).some(v => phoneNumber.startsWith(v))) throw "Start with your country's WhatsApp code, Example : 62xxx"
 
       await delay(3000)
       let code = await sock.requestPairingCode(phoneNumber)
@@ -118,13 +113,6 @@ const startSock = async () => {
 // opsional
 async function getMessage(key) {
    try {
-      if (useStore) {
-         const jid = jidNormalizedUser(key.remoteJid)
-         const msg = await store.loadMessage(jid, key.id)
-
-         return msg?.message || ""
-      }
-
       return ""
    } catch { }
 }
