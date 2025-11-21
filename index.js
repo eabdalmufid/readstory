@@ -5,13 +5,16 @@ import fs from "fs"
 import readline from "node:readline"
 
 const question = (text) => {
-        const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout,
-        });
-        return new Promise((resolve) => {
-            rl.question(text, resolve);
-        });
+   const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+   });
+   return new Promise((resolve) => {
+      rl.question(text, (answer) => {
+         rl.close()
+         resolve(answer)
+      });
+   });
 };
 
 const startSock = async () => {
@@ -31,8 +34,8 @@ const startSock = async () => {
 
    // login dengan pairing
    if (!sock.authState.creds.registered) {
-      console.log("- Silakan masukkan nomor WhatsApp Anda, misalnya 628xxxx") 
-      let phone = await question("\x1b[32m- Nomor Anda: \x1b[39m") 
+      console.log("- Silakan masukkan nomor WhatsApp Anda, misalnya 628xxxx")
+      let phone = await question("\x1b[32m- Nomor Anda: \x1b[39m")
       let phoneNumber = phone.replace(/[^0-9]/g, '')
       const PHONE_CC = await (await fetch('https://raw.githubusercontent.com/eabdalmufid/Databasee/refs/heads/main/data/countryphonecode.json')).json()
       if (!Object.keys(PHONE_CC).some(v => phoneNumber.startsWith(v))) throw "Start with your country's WhatsApp code, Example : 62xxx"
@@ -75,13 +78,13 @@ const startSock = async () => {
                break
             case DisconnectReason.loggedOut:
                console.error("Device has Logged Out, please rescan again...")
-               fs.rmdirSync("./sessions")
+               fs.rmSync("./sessions", { recursive: true, force: true })
                break
             case DisconnectReason.multideviceMismatch:
                console.error("Nedd Multi Device Version, please update and rescan again...")
-               fs.rmdirSync("./sessions")
+               fs.rmSync("./sessions", { recursive: true, force: true })
                break
-            default: 
+            default:
                console.log("Aku ra ngerti masalah opo iki")
                startSock()
          }
@@ -95,15 +98,43 @@ const startSock = async () => {
    // write session kang
    sock.ev.on("creds.update", saveCreds)
 
-   // bagian pembaca status ono ng kene
    sock.ev.on("messages.upsert", async ({ messages }) => {
-      let message = messages[0]
-      if(!message.message) return
-      await sock.sendPresenceUpdate("unavailable", message.key.remoteJid)
+      const msg = messages[0]
+      if (!msg.message) return
 
-      if (message.key && !message.key.fromMe && message.key.remoteJid === "status@broadcast") {
-         await sock.readMessages([message.key])
-         await sock.sendMessage(jidNormalizedUser(sock.user.id), { text: `Read Story @${message.key.participant.split("@")[0]}`, mentions: [message.key.participant] }, { quoted: message, ephemeralExpiration: 86400 })
+      const from = jidNormalizedUser(msg.key.remoteJid.includes("@lid") ? msg.key.remoteJidAlt : msg.key.remoteJid)
+      const isFromMe = msg.key.fromMe === true
+
+      const msgType = Object.keys(msg.message)[0]
+      const text =
+         msgType === "conversation"
+            ? msg.message.conversation
+            : msgType === "extendedTextMessage"
+               ? msg.message.extendedTextMessage.text
+               : msg.message[msgType]?.caption || ""
+
+      const prefixes = [".", "#", "!", "/"]
+      const prefix = text && prefixes.find(p => text.startsWith(p))
+
+      if (prefix && from !== "status@broadcast") {
+         const body = text.slice(prefix.length).trim()
+         const [rawCmd, ...restArgs] = body.split(/\s+/)
+         const cmd = (rawCmd || "").toLowerCase()
+         const args = restArgs // kalau perlu nanti
+
+         switch (cmd) {
+            case "ping":
+               await sock.sendMessage(from, { text: `Speed: ${Date.now() - msg.messageTimestamp * 1000} ms` }, { quoted: msg })
+               await sock.sendPresenceUpdate("unavailable", from)
+               break
+         }
+         return
+      }
+
+      if (msg.key && !isFromMe && from === "status@broadcast") {
+         await sock.readMessages([msg.key])
+         await sock.sendMessage(jidNormalizedUser(sock.user.id), { text: `Read Story @${msg.key.participant.split("@")[0]}`, mentions: [msg.key.participant] }, { quoted: msg, ephemeralExpiration: 86400 })
+         await sock.sendPresenceUpdate("unavailable", from)
       }
    })
 
